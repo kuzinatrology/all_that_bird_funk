@@ -7,9 +7,7 @@
 
 ---
 
-Birds live two to three times longer than mammals of comparable body mass, at
-metabolic rates two- to fivefold higher, body temperatures of 40 to 42 °C and blood
-glucose around 275 mg/dL in a 1 kg bird. Long life has arisen repeatedly in unrelated
+Birds live two to three times longer than mammals of comparable body mass. Long life has arisen repeatedly in unrelated
 avian lineages. This pipeline searches for episodic diversifying selection in
 ageing-associated genes across those lineages and relates it to size-corrected
 longevity.
@@ -17,27 +15,33 @@ longevity.
 Maximum lifespan scales with body mass, so the analysis uses LQ. An allometric
 regression log₁₀(L) = β₀ + β₁·log₁₀(M) is fitted across the sampled species, and LQ is
 observed lifespan divided by predicted lifespan. The top 20% of LQ form the
-**foreground** branch set for the branch-site tests. The PGLS uses LQ as a continuous
-variable.
+**foreground** branch set for the branch-site tests.
 
 ## Pipeline
 
 ```mermaid
 flowchart TD
-    A["Bird proteomes<br/>107 species"] --> B["Homology search<br/>MMseqs2 easy-search"]
+    A["Bird proteomes<br/>107 species, longest isoform per gene"] --> B["Homology search<br/>MMseqs2 easy-search"]
     Q["Query proteins<br/>OpenGenes · Matrisome · regeneration"] --> B
     B --> C["CDS retrieval<br/>one FASTA per gene"]
-    C --> D["Cleaning and power gate<br/>≥18 species, ≥4 long-lived"]
+    C --> D["Power gate<br/>≥18 species, ≥4 long-lived"]
     D --> E["Codon alignment<br/>MACSE alignSequences"]
     E --> F["Frameshifts and stops → gap codons<br/>MACSE exportAlignment"]
-    F --> G["Mask non-homologous segments<br/>HmmCleaner"]
+    F --> G["Mask segments off the alignment profile<br/>HmmCleaner"]
     G --> H["Project mask onto codons<br/>MACSE reportMaskAA2NT"]
     H --> I["Coverage QC<br/>realign affected genes"]
     I -.->|realign| E
     H --> J["Drop sequences that collapsed under masking,<br/>then sparse codon columns"]
     J --> K["Prune and label species tree<br/>ete3"]
-    K --> L["Selection tests<br/>HyPhy: BUSTED-E · RELAX · aBSREL · MEME · FitMG94"]
-    L --> M["Lifespan association<br/>PGLS"]
+    K --> L["BUSTED-E on foreground branches<br/>all genes"]
+    L --> N["Benjamini-Hochberg<br/>q &lt; 0.2"]
+    N --> O["BUSTED-E on background branches"]
+    O --> R["Signal on the background too:<br/>RELAX, K on the foreground"]
+    O --> P["No signal on the background:<br/>selection confined to long-lived"]
+    P --> S["aBSREL: which branches"]
+    P --> T["MEME: which codons"]
+    P --> U["FitMG94: per-species ω"]
+    U --> M["PGLS: LQ on ω"]
 ```
 
 ## Input data
@@ -54,28 +58,25 @@ flowchart TD
 | # | Step | Tool | Notes |
 |---|---|---|---|
 | 1 | Homology search | MMseqs2 `easy-search` | `-c 0.2 --min-seq-id 0.3 --alt-ali 25`, best hit per species. The target database keeps one longest isoform per gene, so a gene is represented once per species |
-| 2 | CDS retrieval | custom code | the coding sequence behind each protein hit, collected per gene |
-| 3 | Cleaning and gate | custom code | species names reduced to binomials; fragments shorter than 10% of the gene mean dropped; a gene is kept only with ≥18 species and ≥4 long-lived species |
+| 2 | CDS retrieval | — | the coding sequence behind each protein hit, collected per gene |
+| 3 | Cleaning and gate | — | species names reduced to binomials; fragments shorter than 10% of the gene mean dropped; a gene is kept only with ≥18 species and ≥4 long-lived species |
 | 4 | Codon alignment | MACSE `alignSequences` | frameshift-aware alignment of coding sequences |
 | 5 | Export | MACSE `exportAlignment` | frameshifts and stop codons, including the terminal one, become whole gap codons, since HyPhy rejects alignments containing stop codons |
 | 6 | Masking | HmmCleaner `--large --specificity` | scores every residue against an HMM profile built from the alignment itself and masks segments that do not fit it. In practice these are mispredicted exons and frameshifted stretches |
-| 7 | Mask transfer | MACSE `reportMaskAA2NT` | the amino-acid mask is projected onto the nucleotide alignment, codon by codon |
-| 8 | Coverage QC | custom code | a sequence delivering under 30% of the codons of its own CDS is removed from the inputs and its gene is realigned from scratch |
-| 9 | Filtering | custom code | a sequence retaining under half of its own length after masking is dropped from that gene. The species stays in every other gene. Then a codon column occupied in under 50% of the remaining sequences is deleted, since ω at a column supported by three species is not an estimate. Sequences first, then columns |
+| 7 | Mask transfer | MACSE `reportMaskAA2NT` | the amino-acid mask is projected onto the nucleotide alignment |
+| 8 | Coverage QC | — | a sequence delivering under 30% of the codons of its own CDS is removed from the inputs and its gene is realigned |
+| 9 | Filtering | — | a sequence retaining under half of its own length after masking is dropped from that gene. Then a codon column occupied in under 50% of the remaining sequences is deleted |
 | 10 | Trees | ete3 | the species tree is pruned to each gene's species and labelled `{Foreground}` / `{Background}` |
-| 11 | Selection | HyPhy | BUSTED-E: is there ω > 1 at some sites on some foreground branches, with an error sink absorbing alignment artefacts. RELAX: is selection intensified or relaxed on the foreground (K). aBSREL: which branches. MEME: which codons, and which lineages drive each. FitMG94 `--type lineage`: per-species ω for the regression |
-| 12 | Association | PGLS | LQ regressed on per-species root-to-tip ω, Brownian-motion covariance from the pruned tree |
+| 11 | Selection, all genes | HyPhy `busted` | BUSTED-E on the foreground branches, with an error sink absorbing alignment artefacts. P-values corrected with Benjamini-Hochberg; genes with q < 0.2 go on |
+| 12 | Confinement to long-lived lineages | HyPhy `busted` | the same genes are rerun with the long-lived species as background. A gene with no background signal carries selection confined to the long-lived lineages, and only those genes go on. A gene significant in both runs goes to RELAX, which asks whether selection is intensified on the foreground (K) |
+| 13 | Selection, confined genes | HyPhy | aBSREL: which branches carry it. MEME: which codons, and which lineages drive each. FitMG94 `--type lineage`: per-species root-to-tip ω |
+| 14 | Association | PGLS | LQ regressed on per-species ω, Brownian-motion covariance from the pruned tree |
 
 The cleaning scheme follows Botero-Castro et al. (2017), with two changed thresholds:
 column occupancy 50% (60% in the paper) and HmmCleaner in `--specificity` mode. The
 HmmCleaner authors report specificity dropping in fast-evolving regions, which is
 where the signal here is. Measured on this dataset, that mode masks 0.8% of residues
 and shifts the column filter outcome by 0.04%.
-
-Sequences are removed before columns: dropping a sequence removes it from both
-numerator and denominator, so the occupancy of the remaining columns rises. Columns
-are deleted, not masked, because a masked column stays in the file and HyPhy still
-counts it.
 
 Every step that deletes columns records an old→new index map, so site coordinates
 reported by MEME can be translated back to the original alignment.
@@ -84,8 +85,7 @@ reported by MEME can be translated back to the original alignment.
 
 Every HyPhy call passes `ENV=TOLERATE_NUMERICAL_ERRORS=1`. Without it a fraction of
 genes aborts with `Internal error in ComputeBranchCache`, which HyPhy reports as
-numerical instability on large alignments. The flag is global and precedes the
-analysis name:
+numerical instability on large alignments.
 
 ```bash
 hyphy CPU=1 ENV=TOLERATE_NUMERICAL_ERRORS=1; busted \
@@ -100,15 +100,10 @@ hyphy CPU=1 ENV=TOLERATE_NUMERICAL_ERRORS=1; busted \
 cap adjustable while the run is in flight, a per-gene timeout, and back-off when other
 users load the machine.
 
-**Statistics.** P-values are corrected with Benjamini-Hochberg. Methods that estimate
-π₀, such as Storey q-values, are not applicable: they assume the null distribution of
-p-values is uniform. The BUSTED null is a 50:50 mixture of χ²₀ and χ²₁, and its
-p-values never exceed 0.5.
-
 ## Limitations
 
 - Bird sequences are best MMseqs2 hits per human query. Orthology was not inferred
-  formally; a reciprocal best hit run retained 47 records.
+  formally.
 - 342 of 3403 genes are excluded as too long to align (median CDS 5313 nt against
   1275 for the rest; MACF1 is 22 479 nt). The gene set is biased against long CDS.
 - DIO2, SELENOP and MT-CYB are run separately. Selenocysteine is encoded by TGA,
@@ -124,7 +119,6 @@ p-values never exceed 0.5.
 | `qc_redo_lowcov.py` | coverage QC and realignment of affected genes |
 | `rebuild_labeled_trees.py` | pruning and labelling of per-gene trees |
 | `busted_e_run.py` | BUSTED-E across the full gene set |
-| `orphan_timeout_guard.py` | timeout enforcement for detached analysis jobs |
 | `relax_run.sh`, `absrel.sh`, `run_meme.sh`, `run_fitmg94.sh`, `run_busted_background.sh` | the remaining HyPhy analyses |
 | `pruned_tree.nwk` | species tree |
 
