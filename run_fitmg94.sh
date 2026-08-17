@@ -4,6 +4,8 @@ set -u
 set -o pipefail
 
 HYPHY_BIN="/home/poroshina/.conda/envs/based/bin/hyphy"
+# HyPhy-аргумент: numerical errors будут warnings, а не fatal errors
+HYPHY_ENV_ARG='ENV=TOLERATE_NUMERICAL_ERRORS=1;'
 FITMG94_BF="/home/poroshina/dn_ds_pipeline_easy_search/hyphy-analyses/FitMG94/FitMG94.bf"
 
 FORCE_RERUN_FITMG94=0
@@ -56,6 +58,7 @@ echo "Workers: $WORKERS"
 echo "FORCE_RERUN_FITMG94=$FORCE_RERUN_FITMG94"
 
 export HYPHY_BIN
+export HYPHY_ENV_ARG
 export FITMG94_BF
 export OMP_NUM_THREADS=1
 
@@ -68,7 +71,7 @@ run_one() {
 
     echo "[RUN] $gene_name"
 
-    "$HYPHY_BIN" "$FITMG94_BF" \
+    "$HYPHY_BIN" "$HYPHY_ENV_ARG" "$FITMG94_BF" \
         --alignment "$codon_path" \
         --tree "$tree_path" \
         --type lineage \

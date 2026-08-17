@@ -4,6 +4,8 @@ set -u
 set -o pipefail
 
 HYPHY_BIN="/home/poroshina/.conda/envs/based/bin/hyphy"
+# HyPhy-аргумент: numerical errors будут warnings, а не fatal errors
+HYPHY_ENV_ARG='ENV=TOLERATE_NUMERICAL_ERRORS=1;'
 ABSREL_WORKERS=4
 FORCE_RERUN=0
 
@@ -165,7 +167,7 @@ run_absrel() {
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     NUMEXPR_NUM_THREADS=1 \
-    "$HYPHY_BIN" CPU=1 absrel \
+    "$HYPHY_BIN" CPU=1 "$HYPHY_ENV_ARG" absrel \
         --alignment "$codon_path" \
         --tree "$tree_path" \
         --output "$output_json" \

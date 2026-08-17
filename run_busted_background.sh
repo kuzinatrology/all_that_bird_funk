@@ -4,6 +4,8 @@ set -u
 set -o pipefail
 
 HYPHY_BIN="/home/poroshina/.conda/envs/based/bin/hyphy"
+# HyPhy-аргумент: numerical errors будут warnings, а не fatal errors
+HYPHY_ENV_ARG='ENV=TOLERATE_NUMERICAL_ERRORS=1;'
 
 BUSTED_WORKERS="${BUSTED_WORKERS:-4}"
 FORCE_RERUN="${FORCE_RERUN:-0}"
@@ -179,7 +181,7 @@ run_background_busted() {
 
     log "START: $gene"
 
-    "$HYPHY_BIN" CPU=1 busted \
+    "$HYPHY_BIN" CPU=1 "$HYPHY_ENV_ARG" busted \
         --alignment "$codon_path" \
         --tree "$tree_path" \
         --branches Background \

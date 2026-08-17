@@ -6,6 +6,8 @@ set -o pipefail
 RELAX_WORKERS=8
 
 HYPHY_BIN="${HYPHY_BIN:-/home/poroshina/.conda/envs/based/bin/hyphy}"
+# HyPhy-аргумент: numerical errors будут warnings, а не fatal errors
+HYPHY_ENV_ARG='ENV=TOLERATE_NUMERICAL_ERRORS=1;'
 
 FORCE_RERUN_RELAX=0
 
@@ -95,7 +97,7 @@ run_relax_one() {
         echo
     } > "$output_log"
 
-    "$HYPHY_BIN" relax \
+    "$HYPHY_BIN" "$HYPHY_ENV_ARG" relax \
         --alignment "$codon_path" \
         --tree "$tree_path" \
         --test "$TEST_LABEL" \
